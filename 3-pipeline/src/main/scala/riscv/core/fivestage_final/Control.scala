@@ -103,20 +103,19 @@ class Control extends Module {
     // 2. OR Load instruction in EX stage
     // 3. AND destination register is not x0
     // 4. AND destination register conflicts with ID source registers
-    //
-    ((?) && // Either:
+    //~
+    (io.memory_read_enable_ex && // Either:
       // - Jump in ID needs register value, OR
       // - Load in EX (load-use hazard)
-      ? =/= 0.U &&                                 // Destination is not x0
-      (?)) // Destination matches ID source
+      io.rd_ex =/= 0.U &&                                 // Destination is not x0
+      (io.rd_ex === io.rs1_id || io.rd_ex === io.rs2_id)) // Destination matches ID source
     //
     // Examples triggering Condition 1:
-    // a) Jump dependency: ADD x1, x2, x3 [EX]; JALR x0, x1, 0 [ID] → stall
-    // b) Load-use: LW x1, 0(x2) [EX]; ADD x3, x1, x4 [ID] → stall
-    // c) Load-branch: LW x1, 0(x2) [EX]; BEQ x1, x4, label [ID] → stall
-
+    // a. Jump dependency: ADD x1, x2, x3 [EX]; JALR x0, x1, 0 [ID] → stall
+    // b. Load-use: LW x1, 0(x2) [EX]; ADD x3, x1, x4 [ID] → stall
+    // c. Load-branch: LW x1, 0(x2) [EX]; BEQ x1, x4, label [ID] → stall
+      
       || // OR
-
         // --- Condition 2: MEM stage load with jump dependency (2-cycle) ---
         // TODO: Complete MEM stage hazard detection
         // Need to detect:
@@ -125,10 +124,10 @@ class Control extends Module {
         // 3. Destination register is not x0
         // 4. Destination register conflicts with ID source registers
         //
-        (? &&                              // Jump instruction in ID
-          ? &&                          // Load instruction in MEM
-          ? =/= 0.U &&                                  // Load destination not x0
-          (?)) // Load dest matches jump source
+        (io.jump_instruction_id &&                              // Jump instruction in ID
+          io.memory_read_enable_mem &&                          // Load instruction in MEM
+          io.rd_mem =/= 0.U =/= 0.U &&                                  // Load destination not x0
+          (io.rd_mem === io.rs1_id || io.rd_mem === io.rs2_id)) // Load dest matches jump source
         //
         // Example triggering Condition 2:
         // LW x1, 0(x2) [MEM]; NOP [EX]; JALR x0, x1, 0 [ID]
@@ -140,9 +139,9 @@ class Control extends Module {
     // - Flush ID/EX register (insert bubble)
     // - Freeze PC (don't fetch next instruction)
     // - Freeze IF/ID (hold current fetch result)
-    io.id_flush := ?
-    io.pc_stall := ?
-    io.if_stall := ?
+    io.id_flush := true.B
+    io.pc_stall := true.B
+    io.if_stall := true.B
 
   }.elsewhen(io.jump_flag) {
     // ============ Control Hazard (Branch Taken) ============
@@ -150,7 +149,7 @@ class Control extends Module {
     // Only flush IF stage (not ID) since branch resolved early
     // TODO: Which stage needs to be flushed when branch is taken?
     // Hint: Branch resolved in ID stage, discard wrong-path instruction
-    io.if_flush := ___
+    io.if_flush := true.B
     // Note: No ID flush needed - branch already resolved in ID!
     // This is the key optimization: 1-cycle branch penalty vs 2-cycle
   }
